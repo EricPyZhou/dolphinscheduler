@@ -40,10 +40,14 @@ import { useJupyter } from './use-jupyter'
 import { useMlflow } from './use-mlflow'
 import { useOpenmldb } from './use-openmldb'
 import { useDvc } from './use-dvc'
+import { useJava } from './use-java'
 import { useDinky } from './use-dinky'
 import { userSagemaker } from './use-sagemaker'
 import { useChunjun } from './use-chunjun'
 import { usePytorch } from './use-pytorch'
+import { useHiveCli } from './use-hive-cli'
+import { useDms } from './use-dms'
+import {useDatasync} from "./use-datasync";
 
 export default {
   SHELL: useShell,
@@ -74,5 +78,9 @@ export default {
   SAGEMAKER: userSagemaker,
   CHUNJUN: useChunjun,
   FLINK_STREAM: useFlinkStream,
-  PYTORCH: usePytorch
+  JAVA: useJava,
+  PYTORCH: usePytorch,
+  HIVECLI: useHiveCli,
+  DMS: useDms,
+  DATASYNC: useDatasync
 }

@@ -17,40 +17,46 @@
 
 package org.apache.dolphinscheduler.service.registry;
 
-import com.google.common.base.Strings;
-import lombok.NonNull;
-import org.apache.dolphinscheduler.common.Constants;
+import static com.google.common.base.Preconditions.checkArgument;
+import static org.apache.dolphinscheduler.common.constants.Constants.COLON;
+import static org.apache.dolphinscheduler.common.constants.Constants.REGISTRY_DOLPHINSCHEDULER_MASTERS;
+import static org.apache.dolphinscheduler.common.constants.Constants.REGISTRY_DOLPHINSCHEDULER_WORKERS;
+import static org.apache.dolphinscheduler.common.constants.Constants.SINGLE_SLASH;
+
 import org.apache.dolphinscheduler.common.IStoppable;
+import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.NodeType;
+import org.apache.dolphinscheduler.common.model.MasterHeartBeat;
 import org.apache.dolphinscheduler.common.model.Server;
-import org.apache.dolphinscheduler.common.utils.HeartBeat;
+import org.apache.dolphinscheduler.common.model.WorkerHeartBeat;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.registry.api.ConnectionListener;
 import org.apache.dolphinscheduler.registry.api.Registry;
 import org.apache.dolphinscheduler.registry.api.RegistryException;
 import org.apache.dolphinscheduler.registry.api.SubscribeListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import org.apache.commons.lang3.StringUtils;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static org.apache.dolphinscheduler.common.Constants.COLON;
-import static org.apache.dolphinscheduler.common.Constants.DIVISION_STRING;
-import static org.apache.dolphinscheduler.common.Constants.REGISTRY_DOLPHINSCHEDULER_MASTERS;
-import static org.apache.dolphinscheduler.common.Constants.REGISTRY_DOLPHINSCHEDULER_WORKERS;
-import static org.apache.dolphinscheduler.common.Constants.SINGLE_SLASH;
+import javax.annotation.PostConstruct;
+
+import lombok.NonNull;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import com.google.common.base.Strings;
 
 @Component
 public class RegistryClient {
@@ -89,46 +95,56 @@ public class RegistryClient {
     }
 
     public List<Server> getServerList(NodeType nodeType) {
-        Map<String, String> serverMaps = getServerMaps(nodeType, false);
+        Map<String, String> serverMaps = getServerMaps(nodeType);
         String parentPath = rootNodePath(nodeType);
 
         List<Server> serverList = new ArrayList<>();
         for (Map.Entry<String, String> entry : serverMaps.entrySet()) {
-            HeartBeat heartBeat = HeartBeat.decodeHeartBeat(entry.getValue());
-            if (heartBeat == null) {
+            String serverPath = entry.getKey();
+            String heartBeatJson = entry.getValue();
+            if (StringUtils.isEmpty(heartBeatJson)) {
+                logger.error("The heartBeatJson is empty, serverPath: {}", serverPath);
                 continue;
             }
-
             Server server = new Server();
-            server.setResInfo(JSONUtils.toJsonString(heartBeat));
-            server.setCreateTime(new Date(heartBeat.getStartupTime()));
-            server.setLastHeartbeatTime(new Date(heartBeat.getReportTime()));
-            server.setId(heartBeat.getProcessId());
+            switch (nodeType) {
+                case MASTER:
+                    MasterHeartBeat masterHeartBeat = JSONUtils.parseObject(heartBeatJson, MasterHeartBeat.class);
+                    server.setCreateTime(new Date(masterHeartBeat.getStartupTime()));
+                    server.setLastHeartbeatTime(new Date(masterHeartBeat.getReportTime()));
+                    server.setId(masterHeartBeat.getProcessId());
+                    break;
+                case WORKER:
+                    WorkerHeartBeat workerHeartBeat = JSONUtils.parseObject(heartBeatJson, WorkerHeartBeat.class);
+                    server.setCreateTime(new Date(workerHeartBeat.getStartupTime()));
+                    server.setLastHeartbeatTime(new Date(workerHeartBeat.getReportTime()));
+                    server.setId(workerHeartBeat.getProcessId());
+                    break;
+            }
 
-            String key = entry.getKey();
-            server.setZkDirectory(parentPath + "/" + key);
+            server.setResInfo(heartBeatJson);
+            // todo: add host, port in heartBeat Info, so that we don't need to parse this again
+            server.setZkDirectory(parentPath + "/" + serverPath);
             // set host and port
-            String[] hostAndPort = key.split(COLON);
-            String[] hosts = hostAndPort[0].split(DIVISION_STRING);
+            String[] hostAndPort = serverPath.split(COLON);
             // fetch the last one
-            server.setHost(hosts[hosts.length - 1]);
+            server.setHost(hostAndPort[0]);
             server.setPort(Integer.parseInt(hostAndPort[1]));
             serverList.add(server);
         }
         return serverList;
     }
 
-    public Map<String, String> getServerMaps(NodeType nodeType, boolean hostOnly) {
+    /**
+     * Return server host:port -> value
+     */
+    public Map<String, String> getServerMaps(NodeType nodeType) {
         Map<String, String> serverMap = new HashMap<>();
         try {
             String path = rootNodePath(nodeType);
             Collection<String> serverList = getServerNodes(nodeType);
             for (String server : serverList) {
-                String host = server;
-                if (nodeType == NodeType.WORKER && hostOnly) {
-                    host = server.split(SINGLE_SLASH)[1];
-                }
-                serverMap.putIfAbsent(host, get(path + SINGLE_SLASH + server));
+                serverMap.putIfAbsent(server, get(path + SINGLE_SLASH + server));
             }
         } catch (Exception e) {
             logger.error("get server list failed", e);
@@ -138,21 +154,13 @@ public class RegistryClient {
     }
 
     public boolean checkNodeExists(String host, NodeType nodeType) {
-        return getServerMaps(nodeType, true).keySet()
+        return getServerMaps(nodeType).keySet()
                 .stream()
                 .anyMatch(it -> it.contains(host));
     }
 
     public Collection<String> getMasterNodesDirectly() {
         return getChildrenKeys(REGISTRY_DOLPHINSCHEDULER_MASTERS);
-    }
-
-    public Collection<String> getWorkerGroupDirectly() {
-        return getChildrenKeys(REGISTRY_DOLPHINSCHEDULER_WORKERS);
-    }
-
-    public Collection<String> getWorkerGroupNodesDirectly(String workerGroup) {
-        return getChildrenKeys(REGISTRY_DOLPHINSCHEDULER_WORKERS + "/" + workerGroup);
     }
 
     /**
@@ -227,14 +235,9 @@ public class RegistryClient {
         return registry.children(key);
     }
 
-    public Set<String> getServerNodeSet(NodeType nodeType, boolean hostOnly) {
+    public Set<String> getServerNodeSet(NodeType nodeType) {
         try {
-            return getServerNodes(nodeType).stream().map(server -> {
-                if (nodeType == NodeType.WORKER && hostOnly) {
-                    return server.split(SINGLE_SLASH)[1];
-                }
-                return server;
-            }).collect(Collectors.toSet());
+            return new HashSet<>(getServerNodes(nodeType));
         } catch (Exception e) {
             throw new RegistryException("Failed to get server node: " + nodeType, e);
         }
@@ -258,13 +261,7 @@ public class RegistryClient {
 
     private Collection<String> getServerNodes(NodeType nodeType) {
         final String path = rootNodePath(nodeType);
-        final Collection<String> serverList = getChildrenKeys(path);
-        if (nodeType != NodeType.WORKER) {
-            return serverList;
-        }
-        return serverList.stream().flatMap(group -> getChildrenKeys(path + SINGLE_SLASH + group)
-                .stream()
-                .map(it -> group + SINGLE_SLASH + it)).collect(Collectors.toList());
+        return getChildrenKeys(path);
     }
 
 }

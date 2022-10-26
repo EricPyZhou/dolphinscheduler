@@ -17,10 +17,15 @@
 
 package org.apache.dolphinscheduler.server.worker.config;
 
-import com.google.common.collect.Sets;
-import lombok.Data;
+import static org.apache.dolphinscheduler.common.constants.Constants.REGISTRY_DOLPHINSCHEDULER_WORKERS;
+
 import org.apache.dolphinscheduler.common.utils.NetUtils;
 import org.apache.dolphinscheduler.registry.api.ConnectStrategyProperties;
+
+import java.time.Duration;
+
+import lombok.Data;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -28,9 +33,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 import org.springframework.validation.annotation.Validated;
-
-import java.time.Duration;
-import java.util.Set;
 
 @Data
 @Validated
@@ -48,7 +50,6 @@ public class WorkerConfig implements Validator {
     private boolean tenantDistributedUser = false;
     private int maxCpuLoadAvg = -1;
     private double reservedMemory = 0.3;
-    private Set<String> groups = Sets.newHashSet("default");
     private String alertListenHost = "localhost";
     private int alertListenPort = 50052;
     private ConnectStrategyProperties registryDisconnectStrategy = new ConnectStrategyProperties();
@@ -57,6 +58,7 @@ public class WorkerConfig implements Validator {
      * This field doesn't need to set at config file, it will be calculated by workerIp:listenPort
      */
     private String workerAddress;
+    private String workerRegistryPath;
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -69,13 +71,15 @@ public class WorkerConfig implements Validator {
         if (workerConfig.getExecThreads() <= 0) {
             errors.rejectValue("exec-threads", null, "should be a positive value");
         }
-        if (workerConfig.getHeartbeatInterval().toMillis() <= 0) {
+        if (workerConfig.getHeartbeatInterval().getSeconds() <= 0) {
             errors.rejectValue("heartbeat-interval", null, "shoule be a valid duration");
         }
         if (workerConfig.getMaxCpuLoadAvg() <= 0) {
             workerConfig.setMaxCpuLoadAvg(Runtime.getRuntime().availableProcessors() * 2);
         }
         workerConfig.setWorkerAddress(NetUtils.getAddr(workerConfig.getListenPort()));
+
+        workerConfig.setWorkerRegistryPath(REGISTRY_DOLPHINSCHEDULER_WORKERS + "/" + workerConfig.getWorkerAddress());
         printConfig();
     }
 
@@ -88,10 +92,10 @@ public class WorkerConfig implements Validator {
         logger.info("Worker config: tenantDistributedUser -> {}", tenantDistributedUser);
         logger.info("Worker config: maxCpuLoadAvg -> {}", maxCpuLoadAvg);
         logger.info("Worker config: reservedMemory -> {}", reservedMemory);
-        logger.info("Worker config: groups -> {}", groups);
         logger.info("Worker config: alertListenHost -> {}", alertListenHost);
         logger.info("Worker config: alertListenPort -> {}", alertListenPort);
         logger.info("Worker config: registryDisconnectStrategy -> {}", registryDisconnectStrategy);
         logger.info("Worker config: workerAddress -> {}", registryDisconnectStrategy);
+        logger.info("Worker config: workerRegistryPath: {}", workerRegistryPath);
     }
 }

@@ -19,9 +19,7 @@ package org.apache.dolphinscheduler.service.process;
 
 import org.apache.dolphinscheduler.common.enums.AuthorizationType;
 import org.apache.dolphinscheduler.common.enums.TaskGroupQueueStatus;
-import org.apache.dolphinscheduler.common.enums.WorkflowExecutionStatus;
 import org.apache.dolphinscheduler.common.graph.DAG;
-import org.apache.dolphinscheduler.common.model.TaskNode;
 import org.apache.dolphinscheduler.common.model.TaskNodeRelation;
 import org.apache.dolphinscheduler.common.utils.CodeGenerateUtils;
 import org.apache.dolphinscheduler.dao.entity.Command;
@@ -54,11 +52,13 @@ import org.apache.dolphinscheduler.dao.entity.User;
 import org.apache.dolphinscheduler.plugin.task.api.enums.TaskExecutionStatus;
 import org.apache.dolphinscheduler.plugin.task.api.model.DateInterval;
 import org.apache.dolphinscheduler.service.exceptions.CronParseException;
+import org.apache.dolphinscheduler.service.model.TaskNode;
 import org.apache.dolphinscheduler.spi.enums.ResourceType;
 
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,17 +68,7 @@ public interface ProcessService {
     ProcessInstance handleCommand(String host,
                                   Command command) throws CronParseException, CodeGenerateUtils.CodeGenerateException;
 
-    void moveToErrorCommand(Command command, String message);
-
-    int createCommand(Command command);
-
-    List<Command> findCommandPage(int pageSize, int pageNumber);
-
-    List<Command> findCommandPageBySlot(int pageSize, int pageNumber, int masterCount, int thisMasterSlot);
-
-    boolean verifyIsNeedCreateCommand(Command command);
-
-    ProcessInstance findProcessInstanceDetailById(int processId);
+    Optional<ProcessInstance> findProcessInstanceDetailById(int processId);
 
     List<TaskDefinition> getTaskNodeListByDefinition(long defineCode);
 
@@ -100,8 +90,6 @@ public interface ProcessService {
 
     void recurseFindSubProcess(long parentCode, List<Long> ids);
 
-    void createRecoveryWaitingThreadCommand(Command originCommand, ProcessInstance processInstance);
-
     Tenant getTenantForProcess(int tenantId, int userId);
 
     Environment findEnvironmentByCode(Long environmentCode);
@@ -116,20 +104,9 @@ public interface ProcessService {
 
     void createSubWorkProcess(ProcessInstance parentProcessInstance, TaskInstance task);
 
-    Map<String, String> getGlobalParamMap(String globalParams);
-
-    Command createSubProcessCommand(ProcessInstance parentProcessInstance,
-                                    ProcessInstance childInstance,
-                                    ProcessInstanceMap instanceMap,
-                                    TaskInstance task);
-
     TaskInstance submitTaskInstanceToDB(TaskInstance taskInstance, ProcessInstance processInstance);
 
     TaskExecutionStatus getSubmitTaskState(TaskInstance taskInstance, ProcessInstance processInstance);
-
-    void saveProcessInstance(ProcessInstance processInstance);
-
-    int saveCommand(Command command);
 
     boolean saveTaskInstance(TaskInstance taskInstance);
 
@@ -147,7 +124,7 @@ public interface ProcessService {
 
     List<Integer> findTaskIdByInstanceState(int instanceId, TaskExecutionStatus state);
 
-    List<TaskInstance> findValidTaskListByProcessId(Integer processInstanceId);
+    List<TaskInstance> findValidTaskListByProcessId(Integer processInstanceId, int testFlag);
 
     List<TaskInstance> findPreviousTaskListByWorkProcessId(Integer processInstanceId);
 
@@ -162,8 +139,6 @@ public interface ProcessService {
     ProcessInstance findSubProcessInstance(Integer parentProcessId, Integer parentTaskId);
 
     ProcessInstance findParentProcessInstance(Integer subProcessId);
-
-    int updateProcessInstance(ProcessInstance processInstance);
 
     void changeOutParam(TaskInstance taskInstance);
 
@@ -186,8 +161,6 @@ public interface ProcessService {
 
     DataSource findDataSourceById(int id);
 
-    int updateProcessInstanceState(Integer processInstanceId, WorkflowExecutionStatus executionStatus);
-
     ProcessInstance findProcessInstanceByTaskId(int taskId);
 
     List<UdfFunc> queryUdfFunListByIds(Integer[] ids);
@@ -196,11 +169,11 @@ public interface ProcessService {
 
     List<Schedule> selectAllByProcessDefineCode(long[] codes);
 
-    ProcessInstance findLastSchedulerProcessInterval(Long definitionCode, DateInterval dateInterval);
+    ProcessInstance findLastSchedulerProcessInterval(Long definitionCode, DateInterval dateInterval, int testFlag);
 
-    ProcessInstance findLastManualProcessInterval(Long definitionCode, DateInterval dateInterval);
+    ProcessInstance findLastManualProcessInterval(Long definitionCode, DateInterval dateInterval, int testFlag);
 
-    ProcessInstance findLastRunningProcess(Long definitionCode, Date startTime, Date endTime);
+    ProcessInstance findLastRunningProcess(Long definitionCode, Date startTime, Date endTime, int testFlag);
 
     String queryUserQueueByProcessInstance(ProcessInstance processInstance);
 
@@ -304,4 +277,6 @@ public interface ProcessService {
     public String findConfigYamlByName(String clusterName);
 
     void forceProcessInstanceSuccessByTaskInstanceId(Integer taskInstanceId);
+
+    Integer queryTestDataSourceId(Integer onlineDataSourceId);
 }

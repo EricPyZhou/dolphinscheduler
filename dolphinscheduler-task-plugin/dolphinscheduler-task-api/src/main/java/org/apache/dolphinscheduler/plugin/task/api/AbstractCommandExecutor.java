@@ -20,22 +20,19 @@ package org.apache.dolphinscheduler.plugin.task.api;
 import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.EXIT_CODE_FAILURE;
 import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.EXIT_CODE_KILL;
 
+import org.apache.dolphinscheduler.common.utils.PropertyUtils;
 import org.apache.dolphinscheduler.plugin.task.api.model.TaskResponse;
 import org.apache.dolphinscheduler.plugin.task.api.utils.AbstractCommandExecutorConstants;
 import org.apache.dolphinscheduler.plugin.task.api.utils.OSUtils;
-import org.apache.dolphinscheduler.spi.utils.PropertyUtils;
-import org.apache.dolphinscheduler.spi.utils.StringUtils;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -56,7 +53,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
  * abstract command executor
  */
 public abstract class AbstractCommandExecutor {
-    
+
     /**
      * rules for extracting Var Pool
      */
@@ -118,7 +115,7 @@ public abstract class AbstractCommandExecutor {
         // setting up user to run commands
         List<String> command = new LinkedList<>();
 
-        //init process builder
+        // init process builder
         ProcessBuilder processBuilder = new ProcessBuilder();
         // setting up a working directory
         processBuilder.directory(new File(taskRequest.getExecutePath()));
@@ -127,12 +124,14 @@ public abstract class AbstractCommandExecutor {
 
         // if sudo.enable=true,setting up user to run commands
         if (OSUtils.isSudoEnable()) {
-            if (SystemUtils.IS_OS_LINUX && PropertyUtils.getBoolean(AbstractCommandExecutorConstants.TASK_RESOURCE_LIMIT_STATE)) {
+            if (SystemUtils.IS_OS_LINUX
+                    && PropertyUtils.getBoolean(AbstractCommandExecutorConstants.TASK_RESOURCE_LIMIT_STATE)) {
                 generateCgroupCommand(command);
             } else {
                 command.add("sudo");
                 command.add("-u");
                 command.add(taskRequest.getTenantCode());
+                command.add("-E");
             }
         }
         command.add(commandInterpreter());
@@ -196,7 +195,7 @@ public abstract class AbstractCommandExecutor {
         // create command file if not exists
         createCommandFileIfNotExists(execCommand, commandFilePath);
 
-        //build process
+        // build process
         buildProcess(commandFilePath);
 
         // parse process output
@@ -208,7 +207,8 @@ public abstract class AbstractCommandExecutor {
 
         // cache processId
         taskRequest.setProcessId(processId);
-        boolean updateTaskExecutionContextStatus = TaskExecutionContextCacheManager.updateTaskExecutionContext(taskRequest);
+        boolean updateTaskExecutionContextStatus =
+                TaskExecutionContextCacheManager.updateTaskExecutionContext(taskRequest);
         if (Boolean.FALSE.equals(updateTaskExecutionContextStatus)) {
             ProcessUtils.kill(taskRequest);
             result.setExitStatusCode(EXIT_CODE_KILL);
@@ -230,12 +230,14 @@ public abstract class AbstractCommandExecutor {
             result.setExitStatusCode(process.exitValue());
 
         } else {
-            logger.error("process has failure, the task timeout configuration value is:{}, ready to kill ...", taskRequest.getTaskTimeout());
+            logger.error("process has failure, the task timeout configuration value is:{}, ready to kill ...",
+                    taskRequest.getTaskTimeout());
             ProcessUtils.kill(taskRequest);
             result.setExitStatusCode(EXIT_CODE_FAILURE);
         }
 
-        logger.info("process has exited, execute path:{}, processId:{} ,exitStatusCode:{} ,processWaitForStatus:{} ,processExitValue:{}",
+        logger.info(
+                "process has exited, execute path:{}, processId:{} ,exitStatusCode:{} ,processWaitForStatus:{} ,processExitValue:{}",
                 taskRequest.getExecutePath(), processId, result.getExitStatusCode(), status, process.exitValue());
         return result;
 
@@ -391,6 +393,7 @@ public abstract class AbstractCommandExecutor {
 
     /**
      * find var pool
+     *
      * @param line
      * @return
      */
@@ -408,7 +411,7 @@ public abstract class AbstractCommandExecutor {
      * @return remain time
      */
     private long getRemainTime() {
-        long usedTime = (System.currentTimeMillis() - taskRequest.getStartTime().getTime()) / 1000;
+        long usedTime = (System.currentTimeMillis() - taskRequest.getStartTime()) / 1000;
         long remainTime = taskRequest.getTaskTimeout() - usedTime;
 
         if (remainTime < 0) {
@@ -451,7 +454,8 @@ public abstract class AbstractCommandExecutor {
         /*
          * when log buffer siz or flush time reach condition , then flush
          */
-        if (logBuffer.size() >= TaskConstants.DEFAULT_LOG_ROWS_NUM || now - lastFlushTime > TaskConstants.DEFAULT_LOG_FLUSH_INTERVAL) {
+        if (logBuffer.size() >= TaskConstants.DEFAULT_LOG_ROWS_NUM
+                || now - lastFlushTime > TaskConstants.DEFAULT_LOG_FLUSH_INTERVAL) {
             lastFlushTime = now;
             logHandler.accept(logBuffer);
 
